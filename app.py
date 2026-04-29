@@ -437,7 +437,7 @@ HTML = '''
 <div class="wrapper">
   <header>
     <div class="logo-ring">⚡</div>
-    <h1>Tanoy Server run on windows</h1>
+    <h1>File Transfer Server run on Render</h1>
     <p><span class="status-dot"></span>File Management System</p>
   </header>
 
@@ -514,7 +514,7 @@ HTML = '''
 
   <!-- Contact Card -->
   <div class="card" style="animation-delay:0.45s;">
-    <div class="card-title">✉ Contact Tanoy Dutta</div>
+    <div class="card-title">✉ Contact With The Owner</div>
     <div class="contact-grid">
       <a class="contact-item" href="tel:+918900405420">
         <div class="contact-icon">📞</div>
@@ -541,7 +541,7 @@ HTML = '''
   </div>
 
   <footer>
-    Built by <span>Tanoy Dutta</span> &nbsp;·&nbsp; Powered by Flask &nbsp;·&nbsp; {{ file_data|length }} file(s) served
+    Built by <span>Tanoy Dutta</span> &nbsp;·&nbsp; Powered by Flask & Render &nbsp;·&nbsp; {{ file_data|length }} file(s) served
   </footer>
 </div>
 
