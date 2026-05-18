@@ -927,8 +927,8 @@ function escapeHtml(text) {
 // Load messages on page load
 loadMessages();
 
-// Refresh messages every 10 seconds
-setInterval(loadMessages, 10000);
+// Refresh messages every 2 seconds
+setInterval(loadMessages, 2000);
 </script>
 </body>
 </html>
