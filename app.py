@@ -1,9 +1,17 @@
-from flask import Flask, request, send_from_directory, render_template_string
+from flask import Flask, request, send_from_directory, render_template_string, jsonify
 import os
+import json
+import datetime
 import mimetypes
 
 app = Flask(__name__)
 FOLDER = "."
+CHAT_FILE = "chat_messages.json"
+
+# Initialize chat file if it doesn't exist
+if not os.path.exists(CHAT_FILE):
+    with open(CHAT_FILE, 'w') as f:
+        json.dump([], f)
 
 HTML = '''
 <!DOCTYPE html>
@@ -155,6 +163,8 @@ HTML = '''
   }
   .card:nth-child(1) { animation-delay: 0.25s; }
   .card:nth-child(2) { animation-delay: 0.35s; }
+  .card:nth-child(3) { animation-delay: 0.40s; }
+  .card:nth-child(4) { animation-delay: 0.45s; }
 
   .card-title {
     font-family: 'Syne', sans-serif;
@@ -255,181 +265,319 @@ HTML = '''
     font-size: 0.9rem; font-weight: 700;
     border: none; border-radius: 50px;
     cursor: pointer;
-    transition: opacity 0.3s, transform 0.2s, box-shadow 0.3s;
-    box-shadow: 0 0 24px rgba(124,110,247,0.4);
-    letter-spacing: 0.04em;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 16px rgba(124,110,247,0.3);
   }
-  .btn-upload:hover { opacity: 0.92; transform: translateY(-2px); box-shadow: 0 0 36px rgba(124,110,247,0.6); }
+  .btn-upload:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(124,110,247,0.5); }
   .btn-upload:active { transform: translateY(0); }
-  .btn-upload:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-upload:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   /* ── Progress bar ── */
-  .progress-wrap {
-    margin-top: 18px;
-    display: none;
-  }
-  .progress-bg {
-    height: 6px; border-radius: 99px;
-    background: rgba(255,255,255,0.07);
+  .progress-wrap { display: none; margin-top: 20px; }
+  .progress-bar {
+    height: 6px;
+    background: rgba(56,217,245,0.1);
+    border-radius: 3px;
     overflow: hidden;
+    margin-bottom: 8px;
   }
   .progress-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent2), var(--accent));
-    width: 0%; transition: width 0.3s;
+    width: 0%;
+    transition: width 0.2s;
+    border-radius: 3px;
   }
-  .progress-label {
-    font-size: 0.7rem;
-    color: var(--muted);
-    margin-top: 6px;
-    text-align: right;
-  }
+  .progress-label { font-size: 0.75rem; color: var(--muted); text-align: right; }
 
-  /* ── Flash messages ── */
-  .flash {
-    padding: 16px 20px;
-    border-radius: 12px;
-    margin-bottom: 20px;
-    font-size: 0.9rem;
-    animation: slideDown 0.4s ease;
-    border-left: 4px solid;
-  }
-  .flash.success {
-    background: rgba(52,217,139,0.12);
-    color: var(--success);
-    border-color: var(--success);
-  }
-  .flash.error {
-    background: rgba(255,95,126,0.12);
-    color: var(--danger);
-    border-color: var(--danger);
-  }
-  @keyframes slideDown {
-    from { opacity:0; transform:translateY(-20px); }
-    to { opacity:1; transform:translateY(0); }
-  }
+  /* ── Message alerts ── */
+  .msg { padding: 14px 18px; border-radius: 10px; font-size: 0.85rem; margin-bottom: 20px; animation: slideDown 0.4s ease; }
+  .msg.success { background: rgba(52,217,139,0.15); border: 1px solid rgba(52,217,139,0.3); color: var(--success); }
+  .msg.error { background: rgba(255,95,126,0.15); border: 1px solid rgba(255,95,126,0.3); color: var(--danger); }
+  @keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
 
   /* ── Search bar ── */
   .search-bar {
     width: 100%;
     padding: 12px 16px;
-    background: var(--bg);
+    background: rgba(56,217,245,0.06);
     border: 1px solid var(--border);
-    color: var(--text);
     border-radius: 10px;
-    margin-bottom: 16px;
+    color: var(--text);
     font-family: 'DM Mono', monospace;
     font-size: 0.85rem;
-    transition: border-color 0.3s;
+    margin-bottom: 16px;
+    transition: border-color 0.3s, background 0.3s;
   }
-  .search-bar:focus { outline:none; border-color:var(--accent); }
+  .search-bar::placeholder { color: var(--muted); }
+  .search-bar:focus { outline: none; border-color: var(--accent); background: rgba(56,217,245,0.1); }
 
-  /* ── File list ── */
-  .file-list {
-    display: flex; flex-direction: column; gap: 10px;
-  }
+  /* ── File List ── */
+  .file-list { display: flex; flex-direction: column; gap: 10px; }
   .file-item {
-    padding: 16px;
-    background: var(--bg);
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 16px;
+    background: rgba(56,217,245,0.04);
     border: 1px solid var(--border);
     border-radius: 12px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
     text-decoration: none;
     color: var(--text);
-    transition: border-color 0.3s, background 0.3s, transform 0.2s;
-    cursor: pointer;
+    transition: all 0.3s;
     animation: fadeUp 0.5s ease both;
+    cursor: pointer;
+    position: relative;
   }
   .file-item:hover {
     border-color: var(--accent);
-    background: rgba(56,217,245,0.04);
+    background: rgba(56,217,245,0.08);
     transform: translateX(4px);
   }
   .file-icon {
-    width: 44px; height: 44px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
     font-size: 1.4rem;
     flex-shrink: 0;
   }
-  .file-meta {
-    flex: 1; min-width: 0;
-  }
-  .file-name {
-    display: block;
-    font-weight: 600;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .file-sub {
-    display: block;
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
+  .file-meta { flex: 1; min-width: 0; }
+  .file-name { display: block; font-weight: 500; font-size: 0.9rem; margin-bottom: 4px; }
+  .file-sub { display: block; font-size: 0.75rem; color: var(--muted); }
   .file-badge {
+    font-size: 0.65rem;
     padding: 4px 10px;
     border-radius: 6px;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    margin-right: 10px;
+    font-weight: 500;
+    white-space: nowrap;
   }
   .dl-btn {
-    color: var(--accent);
-    font-weight: 700;
+    opacity: 0;
     transition: opacity 0.3s;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
   }
-  .file-item:hover .dl-btn { opacity: 0.7; }
+  .file-item:hover .dl-btn { opacity: 1; }
 
+  /* ── Empty state ── */
   .empty-state {
     text-align: center;
-    padding: 48px 24px;
+    padding: 40px 20px;
     color: var(--muted);
   }
-  .empty-state .big { font-size: 3rem; margin-bottom: 12px; }
+  .empty-state .big { font-size: 3rem; margin-bottom: 10px; }
 
-  /* ── Contact Grid ── */
-  .contact-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
-  }
+  /* ── Contact grid ── */
+  .contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
   .contact-item {
-    display: flex; gap: 12px; align-items: flex-start;
+    display: flex; gap: 14px;
     padding: 16px;
-    background: var(--bg);
+    background: rgba(56,217,245,0.04);
     border: 1px solid var(--border);
     border-radius: 12px;
     text-decoration: none;
     color: var(--text);
-    transition: border-color 0.3s;
+    transition: all 0.3s;
+    cursor: pointer;
   }
-  .contact-item:hover { border-color: var(--accent); }
-  .contact-icon { font-size: 1.6rem; }
-  .contact-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .contact-value { margin-top: 4px; font-weight: 600; }
+  .contact-item:hover {
+    border-color: var(--accent);
+    background: rgba(56,217,245,0.08);
+    transform: translateY(-3px);
+  }
+  .contact-icon { font-size: 1.8rem; }
+  .contact-label { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; }
+  .contact-value { font-size: 0.9rem; font-weight: 500; }
+
+  /* ── CHAT STYLES ── */
+  .chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 400px;
+    background: rgba(56,217,245,0.03);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .messages-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .message-item {
+    padding: 12px 14px;
+    background: rgba(124,110,247,0.12);
+    border: 1px solid rgba(124,110,247,0.2);
+    border-radius: 8px;
+    animation: slideIn 0.3s ease;
+    word-break: break-word;
+    position: relative;
+  }
+
+  .message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.75rem;
+    padding-right: 65px; /* Give space for Copy button */
+  }
+
+  .message-username {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .message-time {
+    color: var(--muted);
+    font-size: 0.7rem;
+  }
+
+  .message-content {
+    font-size: 0.85rem;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .message-content code {
+    background: rgba(56,217,245,0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  /* Copy Button Element Styling */
+  .btn-copy-msg {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(56, 217, 245, 0.1);
+    border: 1px solid rgba(56, 217, 245, 0.2);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-family: 'Syne', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-copy-msg:hover {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 8px rgba(56, 217, 245, 0.4);
+  }
+
+  .chat-input-area {
+    padding: 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .chat-name-input,
+  .chat-message-input {
+    padding: 10px 12px;
+    background: rgba(56,217,245,0.06);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    transition: border-color 0.3s, background 0.3s;
+  }
+
+  .chat-name-input {
+    min-width: 120px;
+    flex: 0 0 120px;
+  }
+
+  .chat-message-input {
+    flex: 1;
+    min-width: 150px;
+    resize: none;
+    max-height: 60px;
+  }
+
+  .chat-name-input::placeholder,
+  .chat-message-input::placeholder {
+    color: var(--muted);
+  }
+
+  .chat-name-input:focus,
+  .chat-message-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: rgba(56,217,245,0.1);
+  }
+
+  .btn-send {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, var(--success), rgba(52,217,139,0.8));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(52,217,139,0.3);
+    white-space: nowrap;
+  }
+
+  .btn-send:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(52,217,139,0.5);
+  }
+
+  .btn-send:active { transform: translateY(0); }
+
+  .btn-send:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .empty-chat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
 
   /* ── Animations ── */
-  @keyframes fadeDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
   /* ── Footer ── */
   footer {
     text-align: center;
-    padding-top: 32px;
-    border-top: 1px solid var(--border);
+    padding: 24px;
     color: var(--muted);
     font-size: 0.8rem;
+    margin-top: 40px;
   }
-  footer span { color: var(--accent); font-weight: 700; }
+  footer span { color: var(--accent); }
 
+  /* ── Scrollbar styling ── */
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: rgba(56,217,245,0.05); }
+  ::-webkit-scrollbar-thumb { background: rgba(56,217,245,0.2); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(56,217,245,0.35); }
 </style>
 </head>
 <body>
-
 <div class="orb orb1"></div>
 <div class="orb orb2"></div>
 <div class="orb orb3"></div>
@@ -437,56 +585,47 @@ HTML = '''
 <div class="wrapper">
   <header>
     <div class="logo-ring">⚡</div>
-    <h1>File Transfer Server run on Render</h1>
-    <p><span class="status-dot"></span>File Management System</p>
+    <h1>File Transfer server Run on Render</h1>
+    <p><span class="status-dot"></span>Online and ready</p>
   </header>
 
   <div class="stats">
     <div class="stat-card">
-      <div class="num" id="statCount">{{ file_data|length }}</div>
-      <div class="lbl">Total Files</div>
+      <div class="num">{{ file_data|length }}</div>
+      <div class="lbl">Files</div>
     </div>
     <div class="stat-card">
-      <div class="num" id="statSize">{{ total_size }}</div>
-      <div class="lbl">Total Size</div>
+      <div class="num">{{ total_size }}</div>
+      <div class="lbl">Storage</div>
     </div>
     <div class="stat-card">
-      <div class="num">8080</div>
-      <div class="lbl">Port</div>
-    </div>
-    <div class="stat-card">
-      <div class="num">ON</div>
-      <div class="lbl">Status</div>
+      <div class="num">100%</div>
+      <div class="lbl">Handel Requests</div>
     </div>
   </div>
 
-  <!-- Flash -->
   {% if message %}
-  <div class="flash {{ message_type }}" style="display:block">{{ message }}</div>
+  <div class="msg {{ message_type }}">{{ message }}</div>
   {% endif %}
 
-  <!-- Upload Card -->
   <div class="card">
-    <div class="card-title">⬆ Upload Files</div>
-    <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data">
+    <div class="card-title">📤 Upload Files</div>
+    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
       <div class="drop-zone" id="dropZone">
-        <div class="icon">🗂</div>
-        <p>Drag &amp; drop files here, or <span onclick="document.getElementById('fileInput').click()">browse</span></p>
-        <p style="font-size:0.75rem;margin-top:6px;">Select multiple files at once</p>
-        <div class="selected-files" id="selectedFiles"></div>
-        <div class="file-count" id="fileCount"></div>
-        <input type="file" name="files" id="fileInput" multiple>
+        <div class="icon">📁</div>
+        <p>Drag files here or <span onclick="document.getElementById('fileInput').click()">click to browse</span></p>
+        <input type="file" id="fileInput" name="files" multiple>
       </div>
+      <div class="selected-files" id="selectedFiles"></div>
+      <div class="file-count" id="fileCount"></div>
+      <button type="submit" class="btn-upload" id="uploadBtn" disabled>📤 Upload Files</button>
       <div class="progress-wrap" id="progressWrap">
-        <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
         <div class="progress-label" id="progressLabel">0%</div>
       </div>
-      <br>
-      <button type="submit" class="btn-upload" id="uploadBtn" disabled>⚡ Upload Files</button>
     </form>
   </div>
 
-  <!-- Files Card -->
   <div class="card">
     <div class="card-title">📁 Available Files &nbsp;<span style="color:var(--muted);font-size:0.7rem;letter-spacing:0.04em;">newest first</span></div>
     <input class="search-bar" id="searchBar" placeholder="Search files…" oninput="filterFiles(this.value)">
@@ -512,9 +651,33 @@ HTML = '''
     </div>
   </div>
 
-  <!-- Contact Card -->
-  <div class="card" style="animation-delay:0.45s;">
-    <div class="card-title">✉ Contact With The Owner</div>
+  <div class="card">
+    <div class="card-title">💬 Live Chat</div>
+    <div class="chat-container">
+      <div class="messages-area" id="messagesArea">
+        <div class="empty-chat">No messages yet. Start the conversation!</div>
+      </div>
+      <div class="chat-input-area">
+        <input 
+          type="text" 
+          id="nameInput" 
+          class="chat-name-input" 
+          placeholder="Your name" 
+          maxlength="20"
+        >
+        <textarea 
+          id="messageInput" 
+          class="chat-message-input" 
+          placeholder="Type a message (text, code, etc)…" 
+          rows="1"
+        ></textarea>
+        <button id="sendBtn" class="btn-send">Send 📨</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="animation-delay:0.50s;">
+    <div class="card-title">✉ Contact Tanoy Dutta</div>
     <div class="contact-grid">
       <a class="contact-item" href="tel:+918900405420">
         <div class="contact-icon">📞</div>
@@ -541,12 +704,12 @@ HTML = '''
   </div>
 
   <footer>
-    Built by <span>Tanoy Dutta</span> &nbsp;·&nbsp; Powered by Flask & Render &nbsp;·&nbsp; {{ file_data|length }} file(s) served
+    Built by <span>Tanoy Dutta</span> &nbsp;·&nbsp; Powered by Flask &nbsp;·&nbsp; {{ file_data|length }} file(s) served &nbsp;·&nbsp; {{ chat_count }} message(s)
   </footer>
 </div>
 
 <script>
-// Drag & drop
+// ============ FILE UPLOAD ============
 const dz = document.getElementById('dropZone');
 const fi = document.getElementById('fileInput');
 const sf = document.getElementById('selectedFiles');
@@ -606,7 +769,6 @@ function removeFile(index) {
   showSelectedFiles();
 }
 
-// Upload progress simulation
 document.getElementById('uploadForm').addEventListener('submit', function() {
   const pw = document.getElementById('progressWrap');
   const pf = document.getElementById('progressFill');
@@ -620,17 +782,153 @@ document.getElementById('uploadForm').addEventListener('submit', function() {
   }, 150);
 });
 
-// File search
 function filterFiles(q) {
   document.querySelectorAll('.file-item').forEach(el => {
     el.style.display = el.dataset.name.includes(q.toLowerCase()) ? 'flex' : 'none';
   });
 }
 
-// Staggered file-item animation
 document.querySelectorAll('.file-item').forEach((el, i) => {
   el.style.animationDelay = (i * 0.05) + 's';
 });
+
+// ============ CHAT FUNCTIONALITY ============
+const nameInput = document.getElementById('nameInput');
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+const messagesArea = document.getElementById('messagesArea');
+
+let lastRenderedTimestamp = 0; // Tracks last message to avoid refresh flickering
+
+// Auto-expand textarea
+messageInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Send message on Enter (Ctrl+Enter for new line)
+messageInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendBtn.addEventListener('click', sendMessage);
+
+function sendMessage() {
+  const name = nameInput.value.trim();
+  const message = messageInput.value.trim();
+
+  if (!name) {
+    alert('Please enter your name');
+    nameInput.focus();
+    return;
+  }
+
+  if (!message) {
+    alert('Please enter a message');
+    messageInput.focus();
+    return;
+  }
+
+  sendBtn.disabled = true;
+
+  fetch('/send-message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name, message: message })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      messageInput.value = '';
+      messageInput.style.height = 'auto';
+      loadMessages();
+    } else {
+      alert('Failed to send message');
+    }
+    sendBtn.disabled = false;
+  })
+  .catch(err => {
+    console.error('Error:', err);
+    sendBtn.disabled = false;
+  });
+}
+
+function loadMessages() {
+  fetch('/get-messages')
+    .then(r => r.json())
+    .then(messages => {
+      if (messages.length === 0) {
+        messagesArea.innerHTML = '<div class="empty-chat">No messages yet. Start the conversation!</div>';
+        lastRenderedTimestamp = 0;
+        return;
+      }
+
+      // Check if we need to clean out the placeholder block
+      const emptyState = messagesArea.querySelector('.empty-chat');
+      if (emptyState) {
+        messagesArea.innerHTML = '';
+      }
+
+      let containsNewMessages = false;
+
+      messages.forEach(msg => {
+        // Only append messages with a timestamp higher than the last rendered message
+        if (msg.timestamp > lastRenderedTimestamp) {
+          const msgDiv = document.createElement('div');
+          msgDiv.className = 'message-item';
+          msgDiv.innerHTML = `
+            <div class="message-header">
+              <span class="message-username">${escapeHtml(msg.name)}</span>
+              <span class="message-time">${msg.time}</span>
+            </div>
+            <div class="message-content">${escapeHtml(msg.message)}</div>
+            <button class="btn-copy-msg" onclick="copyMessageText(this, ${JSON.stringify(msg.message).replace(/"/g, '&quot;')})">Copy</button>
+          `;
+          messagesArea.appendChild(msgDiv);
+          lastRenderedTimestamp = msg.timestamp;
+          containsNewMessages = true;
+        }
+      });
+
+      // Only force scroll down if actual new data entered the pipeline
+      if (containsNewMessages) {
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+      }
+    })
+    .catch(err => console.error('Error loading messages:', err));
+}
+
+function copyMessageText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = 'var(--success)';
+    btn.style.color = '#fff';
+    
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.style.background = '';
+      btn.style.color = '';
+    }, 2000);
+  }).catch(err => {
+    console.error('Could not copy text: ', err);
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Load messages on page load
+loadMessages();
+
+// Refresh messages every 10 seconds
+setInterval(loadMessages, 10000);
 </script>
 </body>
 </html>
@@ -676,7 +974,7 @@ app.jinja_env.filters['file_ext']   = lambda f: get_file_ext(f)
 def get_files_sorted():
     """Return list of (filename, modified_time_str, size_str) sorted newest first."""
     import datetime
-    raw = [f for f in os.listdir(FOLDER) if os.path.isfile(os.path.join(FOLDER, f))]
+    raw = [f for f in os.listdir(FOLDER) if os.path.isfile(os.path.join(FOLDER, f)) and f != CHAT_FILE and not f.startswith('.')]
     def mtime(f):
         return os.path.getmtime(os.path.join(FOLDER, f))
     raw.sort(key=mtime, reverse=True)
@@ -697,26 +995,46 @@ def get_files_sorted():
         result.append({'name': f, 'time': label, 'size': sz})
     return result
 
+def get_chat_count():
+    """Get number of chat messages"""
+    try:
+        with open(CHAT_FILE, 'r') as f:
+            messages = json.load(f)
+            return len(messages)
+    except:
+        return 0
+
 @app.route('/')
 def index():
     file_data = get_files_sorted()
     total_bytes = sum(os.path.getsize(os.path.join(FOLDER, f['name'])) for f in file_data)
-    return render_template_string(HTML, file_data=file_data, total_size=human_size(total_bytes), message='', message_type='')
+    return render_template_string(
+        HTML, 
+        file_data=file_data, 
+        total_size=human_size(total_bytes), 
+        message='', 
+        message_type='',
+        chat_count=get_chat_count()
+    )
 
 @app.route('/upload', methods=['POST'])
 def upload():
     files = request.files.getlist('files')
     
-    # Filter out empty files
     files = [f for f in files if f and f.filename != '']
     
     if not files:
         file_data = get_files_sorted()
         total_bytes = sum(os.path.getsize(os.path.join(FOLDER, x['name'])) for x in file_data)
-        return render_template_string(HTML, file_data=file_data, total_size=human_size(total_bytes),
-                                      message='⚠ No files selected.', message_type='error')
+        return render_template_string(
+            HTML, 
+            file_data=file_data, 
+            total_size=human_size(total_bytes),
+            message='⚠ No files selected.', 
+            message_type='error',
+            chat_count=get_chat_count()
+        )
     
-    # Save all files
     saved_files = []
     for f in files:
         f.save(os.path.join(FOLDER, f.filename))
@@ -730,15 +1048,68 @@ def upload():
     else:
         message = f'✅ {len(saved_files)} files uploaded successfully!'
     
-    return render_template_string(HTML, file_data=file_data, total_size=human_size(total_bytes),
-                                  message=message, message_type='success')
+    return render_template_string(
+        HTML, 
+        file_data=file_data, 
+        total_size=human_size(total_bytes),
+        message=message, 
+        message_type='success',
+        chat_count=get_chat_count()
+    )
 
 @app.route('/download/<path:filename>')
 def download(filename):
     return send_from_directory(FOLDER, filename, as_attachment=True)
 
-import os
+@app.route('/get-messages', methods=['GET'])
+def get_messages():
+    """Get all chat messages"""
+    try:
+        with open(CHAT_FILE, 'r') as f:
+            messages = json.load(f)
+            return jsonify(messages[-50:])  # Return last 50 messages
+    except:
+        return jsonify([])
+
+@app.route('/send-message', methods=['POST'])
+def send_message():
+    """Save a new chat message"""
+    data = request.get_json()
+    name = data.get('name', '').strip()[:20]
+    message = data.get('message', '').strip()[:500]
+    
+    if not name or not message:
+        return jsonify({'success': False, 'error': 'Name and message required'})
+    
+    try:
+        # Load existing messages
+        try:
+            with open(CHAT_FILE, 'r') as f:
+                messages = json.load(f)
+        except:
+            messages = []
+        
+        # Add new message
+        now = datetime.datetime.now()
+        new_message = {
+            'name': name,
+            'message': message,
+            'time': now.strftime("%H:%M"),
+            'timestamp': now.timestamp()
+        }
+        messages.append(new_message)
+        
+        # Keep only last 500 messages to prevent file from getting too large
+        messages = messages[-500:]
+        
+        # Save messages
+        with open(CHAT_FILE, 'w') as f:
+            json.dump(messages, f)
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080, debug=False)
+
