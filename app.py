@@ -1076,7 +1076,8 @@ def send_message():
     """Save a new chat message"""
     data = request.get_json()
     name = data.get('name', '').strip()[:20]
-    message = data.get('message', '').strip()[:500]
+    message = data.get('message', '').strip()[:5000]
+    #number of character 
     
     if not name or not message:
         return jsonify({'success': False, 'error': 'Name and message required'})
@@ -1099,8 +1100,8 @@ def send_message():
         }
         messages.append(new_message)
         
-        # Keep only last 500 messages to prevent file from getting too large
-        messages = messages[-500:]
+        # Keep only last 300 messages to prevent file from getting too large
+        messages = messages[-300:]
         
         # Save messages
         with open(CHAT_FILE, 'w') as f:
